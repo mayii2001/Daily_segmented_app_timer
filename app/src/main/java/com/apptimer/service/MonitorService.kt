@@ -143,7 +143,7 @@ class MonitorService : Service() {
             return
         }
 
-        if (foregroundApp == myPackageName) {
+        if (foregroundApp == myPackageName || AppUsageHelper.isHomePackage(this, foregroundApp)) {
             handleLeaveLimitedApp()
             return
         }

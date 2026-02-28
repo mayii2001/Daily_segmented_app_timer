@@ -114,7 +114,19 @@ class AppListAdapter(
 
     fun getPositionForLetter(letter: Char): Int {
         val normalized = letter.uppercaseChar()
-        return letterPositionMap[normalized] ?: 0
+        letterPositionMap[normalized]?.let { return it }
+
+        if (normalized in 'A'..'Z') {
+            for (c in normalized..'Z') {
+                letterPositionMap[c]?.let { return it }
+            }
+            for (code in (normalized.code - 1) downTo 'A'.code) {
+                val c = code.toChar()
+                letterPositionMap[c]?.let { return it }
+            }
+        }
+
+        return letterPositionMap['#'] ?: 0
     }
 
     private fun buildLetterIndex() {

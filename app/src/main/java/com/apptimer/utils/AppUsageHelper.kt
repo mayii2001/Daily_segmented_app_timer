@@ -23,8 +23,7 @@ object AppUsageHelper {
     fun getCurrentForegroundApp(context: Context): String? {
         val usageStatsManager = context.getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
         val endTime = System.currentTimeMillis()
-        val startTime = endTime - 60_000
-        val homePackage = getHomePackage(context)
+        val startTime = endTime - 120_000
 
         val events = usageStatsManager.queryEvents(startTime, endTime)
         val event = UsageEvents.Event()
@@ -47,29 +46,12 @@ object AppUsageHelper {
             }
         }
 
-        if (
-            !lastForegroundPackage.isNullOrBlank() &&
-            lastForegroundPackage != homePackage &&
-            endTime - lastEventTime <= 5_000
-        ) {
-            return lastForegroundPackage
-        }
+        return lastForegroundPackage
+    }
 
-        val usageStats = usageStatsManager.queryUsageStats(
-            UsageStatsManager.INTERVAL_BEST,
-            startTime,
-            endTime
-        )
-
-        val latestUsage = usageStats
-            ?.filter { !it.packageName.isNullOrBlank() && it.packageName != homePackage }
-            ?.maxByOrNull { it.lastTimeUsed }
-
-        if (latestUsage == null || endTime - latestUsage.lastTimeUsed > 5_000) {
-            return null
-        }
-
-        return latestUsage.packageName
+    fun isHomePackage(context: Context, packageName: String): Boolean {
+        val homePackage = getHomePackage(context)
+        return !homePackage.isNullOrBlank() && homePackage == packageName
     }
 
     private fun getHomePackage(context: Context): String? {

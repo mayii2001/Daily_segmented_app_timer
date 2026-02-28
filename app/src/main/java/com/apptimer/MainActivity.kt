@@ -142,11 +142,20 @@ class MainActivity : AppCompatActivity() {
         letterIndexList.setOnTouchListener { view, event ->
             if (event.action == MotionEvent.ACTION_DOWN || event.action == MotionEvent.ACTION_MOVE) {
                 view.parent?.requestDisallowInterceptTouchEvent(true)
-                val itemCount = letters.size
-                if (itemCount > 0 && view.height > 0) {
-                    val ratio = (event.y / view.height).coerceIn(0f, 0.9999f)
-                    val position = (ratio * itemCount).toInt()
-                    jumpToLetterAt(position)
+                val firstChild = letterIndexList.getChildAt(0)
+                val lastChild = letterIndexList.getChildAt(letterIndexList.childCount - 1)
+                val inContentArea = firstChild != null &&
+                    lastChild != null &&
+                    event.y >= firstChild.top &&
+                    event.y <= lastChild.bottom
+
+                if (!inContentArea) {
+                    return@setOnTouchListener true
+                }
+
+                val touchedPosition = letterIndexList.pointToPosition(0, event.y.toInt())
+                if (touchedPosition != ListView.INVALID_POSITION && touchedPosition < letters.size) {
+                    jumpToLetterAt(touchedPosition)
                 }
                 true
             } else {
