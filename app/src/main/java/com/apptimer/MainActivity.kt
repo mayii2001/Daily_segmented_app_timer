@@ -3,8 +3,11 @@
 import android.os.Bundle
 import android.text.Editable
 import android.text.TextWatcher
+import android.view.MotionEvent
 import android.view.View
+import android.widget.ArrayAdapter
 import android.widget.EditText
+import android.widget.ListView
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
@@ -28,6 +31,8 @@ class MainActivity : AppCompatActivity() {
     private lateinit var monitorSwitch: SwitchMaterial
     private lateinit var permissionWarning: TextView
     private lateinit var periodInput: EditText
+    private lateinit var appListRecyclerView: RecyclerView
+    private lateinit var letterIndexList: ListView
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -49,10 +54,20 @@ class MainActivity : AppCompatActivity() {
         adapter.refreshUsageTimes()
     }
 
+    override fun onPause() {
+        super.onPause()
+        adapter.saveAllLimits()
+        if (monitorSwitch.isChecked && PermissionHelper.hasAllPermissions(this)) {
+            MonitorService.refresh(this)
+        }
+    }
+
     private fun setupViews() {
         monitorSwitch = findViewById(R.id.monitorSwitch)
         permissionWarning = findViewById(R.id.permissionWarning)
         periodInput = findViewById(R.id.periodInput)
+        appListRecyclerView = findViewById(R.id.appListRecyclerView)
+        letterIndexList = findViewById(R.id.letterIndexList)
 
         val prefs = getSharedPreferences(MonitorService.PREFS_NAME, MODE_PRIVATE)
         val isMonitoringEnabled = prefs.getBoolean("monitoring_enabled", false)
@@ -83,13 +98,13 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        val recyclerView = findViewById<RecyclerView>(R.id.appListRecyclerView)
-        recyclerView.layoutManager = LinearLayoutManager(this)
+        appListRecyclerView.layoutManager = LinearLayoutManager(this)
 
         adapter = AppListAdapter(this, packageManager, this) { packageName, timeLimit ->
             saveAppLimit(packageName, timeLimit)
         }
-        recyclerView.adapter = adapter
+        appListRecyclerView.adapter = adapter
+        setupLetterIndex()
 
         monitorSwitch.setOnCheckedChangeListener { _, isChecked ->
             prefs.edit().putBoolean("monitoring_enabled", isChecked).apply()
@@ -104,6 +119,39 @@ class MainActivity : AppCompatActivity() {
                 }
             } else {
                 MonitorService.stop(this)
+            }
+        }
+    }
+
+    private fun setupLetterIndex() {
+        val letters = ('A'..'Z').map { it.toString() } + "#"
+        val indexAdapter = ArrayAdapter(this, R.layout.item_letter_index, letters)
+        letterIndexList.adapter = indexAdapter
+
+        val jumpToLetterAt = { position: Int ->
+            val safePosition = position.coerceIn(0, letters.lastIndex)
+            val letter = letters[safePosition].first()
+            val targetPosition = adapter.getPositionForLetter(letter)
+            appListRecyclerView.scrollToPosition(targetPosition)
+        }
+
+        letterIndexList.setOnItemClickListener { _, _, position, _ ->
+            jumpToLetterAt(position)
+        }
+
+        letterIndexList.setOnTouchListener { view, event ->
+            if (event.action == MotionEvent.ACTION_DOWN || event.action == MotionEvent.ACTION_MOVE) {
+                view.parent?.requestDisallowInterceptTouchEvent(true)
+                val itemCount = letters.size
+                if (itemCount > 0 && view.height > 0) {
+                    val ratio = (event.y / view.height).coerceIn(0f, 0.9999f)
+                    val position = (ratio * itemCount).toInt()
+                    jumpToLetterAt(position)
+                }
+                true
+            } else {
+                view.parent?.requestDisallowInterceptTouchEvent(false)
+                true
             }
         }
     }
@@ -195,4 +243,5 @@ class MainActivity : AppCompatActivity() {
             MonitorService.start(this)
         }
     }
+
 }

@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">应用时间管理</string>
+    <string name="permission_usage_stats_title">使用统计权限</string>
+    <string name="permission_usage_stats_message">需要授予使用统计权限以监控应用使用时间</string>
+    <string name="permission_overlay_title">悬浮窗权限</string>
+    <string name="permission_overlay_message">需要授予悬浮窗权限以显示时间提醒</string>
+    <string name="grant_permission">授予权限</string>
+    <string name="monitoring_active">监控服务运行中</string>
+    <string name="start_monitoring">开始监控</string>
+    <string name="stop_monitoring">停止监控</string>
+    <string name="time_limit">时间限制</string>
+    <string name="minutes">分钟</string>
+    <string name="timeout_title">时间已到！</string>
+    <string name="timeout_message">您已达到该应用的使用时间限制</string>
+    <string name="got_it">知道了</string>
+    <string name="extend_5min">再给5分钟</string>
+    <string name="no_apps">未找到应用</string>
+    <string name="settings">设置</string>
+    <string name="usage_history">使用历史</string>
+    <string name="today_usage">今日使用</string>
+</resources>

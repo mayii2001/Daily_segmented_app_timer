@@ -79,14 +79,19 @@ class MonitorService : Service() {
         super.onCreate()
         database = AppDatabase.getDatabase(this)
         createNotificationChannel()
-        startForeground(NOTIFICATION_ID, createNotification())
+        runCatching {
+            startForeground(NOTIFICATION_ID, createNotification())
+        }.onFailure { error ->
+            android.util.Log.e("MonitorService", "startForeground failed", error)
+            stopSelf()
+        }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
             ACTION_REFRESH -> {
                 isDialogShowing = false
-                serviceScope.launch { checkCurrentApp() }
+                serviceScope.launch { safeCheckCurrentApp() }
             }
             ACTION_DIALOG_DISMISSED -> isDialogShowing = false
             else -> startMonitoring()
@@ -105,11 +110,20 @@ class MonitorService : Service() {
     private fun startMonitoring() {
         monitorJob?.cancel()
         monitorJob = serviceScope.launch {
-            checkCurrentApp()
+            safeCheckCurrentApp()
             while (isActive) {
-                checkCurrentApp()
+                safeCheckCurrentApp()
                 delay(CHECK_INTERVAL)
             }
+        }
+    }
+
+    private suspend fun safeCheckCurrentApp() {
+        runCatching {
+            checkCurrentApp()
+        }.onFailure { error ->
+            android.util.Log.e("MonitorService", "checkCurrentApp failed", error)
+            handleLeaveLimitedApp()
         }
     }
 
@@ -120,58 +134,71 @@ class MonitorService : Service() {
     }
 
     private suspend fun checkCurrentApp() {
-        if (AppUsageHelper.isAppInForeground(this, myPackageName)) {
-            handleLeaveLimitedApp()
-            return
-        }
-
         val foregroundApp = AppUsageHelper.getCurrentForegroundApp(this)
 
-        if (foregroundApp.isNullOrBlank() || foregroundApp == myPackageName) {
+        if (foregroundApp.isNullOrBlank()) {
+            if (currentApp != null) {
+                processLimitedApp(currentApp!!)
+            }
+            return
+        }
+
+        if (foregroundApp == myPackageName) {
             handleLeaveLimitedApp()
             return
         }
 
-        val limit = database.appLimitDao().getLimitByPackage(foregroundApp)
-        if (limit == null || !limit.enabled || limit.timeLimit <= 0) {
-            handleLeaveLimitedApp()
-            return
-        }
-
-        if (currentApp != foregroundApp) {
+        if (currentApp != null && currentApp != foregroundApp) {
             saveCurrentSession()
-            currentApp = foregroundApp
+        }
+        processLimitedApp(foregroundApp)
+    }
+
+    private suspend fun processLimitedApp(packageName: String) {
+        val limit = database.appLimitDao().getLimitByPackage(packageName)
+        if (limit == null || !limit.enabled || limit.timeLimit <= 0) {
+            if (currentApp != null) {
+                handleLeaveLimitedApp()
+            }
+            return
+        }
+
+        if (currentApp != packageName) {
+            currentApp = packageName
             sessionStartTime = System.currentTimeMillis()
         }
 
         val periodHours = getPeriodHours()
         val periodStart = getCurrentPeriodStart(periodHours)
-        val periodUsage = getPeriodUsage(foregroundApp, periodStart)
+        val periodUsage = getPeriodUsage(packageName, periodStart)
         val remainingTime = limit.timeLimit - periodUsage
 
         if (remainingTime > 0 && isDialogShowing) {
             isDialogShowing = false
         }
 
-        if (!isOverlayShowing || lastMonitoredApp != foregroundApp) {
-            updateOverlay(foregroundApp, remainingTime, limit.timeLimit)
+        if (!isOverlayShowing || lastMonitoredApp != packageName) {
+            updateOverlay(packageName, remainingTime, limit.timeLimit)
             isOverlayShowing = true
-            lastMonitoredApp = foregroundApp
+            lastMonitoredApp = packageName
         } else {
-            updateOverlay(foregroundApp, remainingTime, limit.timeLimit)
+            updateOverlay(packageName, remainingTime, limit.timeLimit)
         }
 
         updateNotification(
             "Monitoring ${limit.appName}: ${remainingTime.coerceAtLeast(0) / 60}m left"
         )
 
-        if (remainingTime <= 0 && !isDialogShowing) {
+        val appStableForMs = System.currentTimeMillis() - sessionStartTime
+        if (remainingTime <= 0 && !isDialogShowing && appStableForMs >= 3_000) {
             isDialogShowing = true
             hideOverlayIfNeeded()
             showTimeoutDialog(
-                packageName = foregroundApp,
+                packageName = packageName,
                 periodStartTime = periodStart,
-                periodHours = periodHours
+                periodHours = periodHours,
+                periodUsageSeconds = periodUsage,
+                remainingTimeSeconds = remainingTime
             )
         }
     }
@@ -270,7 +297,9 @@ class MonitorService : Service() {
     private fun showTimeoutDialog(
         packageName: String,
         periodStartTime: Long,
-        periodHours: Int
+        periodHours: Int,
+        periodUsageSeconds: Long,
+        remainingTimeSeconds: Long
     ) {
         serviceScope.launch {
             val limit = database.appLimitDao().getLimitByPackage(packageName)
@@ -278,12 +307,14 @@ class MonitorService : Service() {
             val periodEndTime = periodStartTime + periodHours * 60L * 60L * 1000L
 
             val intent = Intent(this@MonitorService, TimeoutDialog::class.java).apply {
-                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK
                 putExtra("packageName", packageName)
                 putExtra("periodHours", periodHours)
                 putExtra("timeLimitSeconds", timeLimitSeconds)
                 putExtra("periodStartTime", periodStartTime)
                 putExtra("periodEndTime", periodEndTime)
+                putExtra("periodUsageSeconds", periodUsageSeconds)
+                putExtra("remainingTimeSeconds", remainingTimeSeconds)
             }
             startActivity(intent)
         }

@@ -22,6 +22,7 @@ class TimeoutDialog : AppCompatActivity() {
     private var timeLimitSeconds: Long = 0L
     private var periodStartTime: Long = 0L
     private var periodEndTime: Long = 0L
+    private var periodUsageSeconds: Long = 0L
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -33,6 +34,7 @@ class TimeoutDialog : AppCompatActivity() {
         timeLimitSeconds = intent.getLongExtra("timeLimitSeconds", 0L)
         periodStartTime = intent.getLongExtra("periodStartTime", 0L)
         periodEndTime = intent.getLongExtra("periodEndTime", 0L)
+        periodUsageSeconds = intent.getLongExtra("periodUsageSeconds", 0L).coerceAtLeast(0L)
 
         if (periodStartTime <= 0L || periodEndTime <= periodStartTime) {
             periodEndTime = System.currentTimeMillis()
@@ -76,7 +78,7 @@ class TimeoutDialog : AppCompatActivity() {
             CoroutineScope(Dispatchers.IO).launch {
                 val currentLimit = database.appLimitDao().getLimitByPackage(pkg)
                 currentLimit?.let {
-                    val newLimit = it.timeLimit + 300
+                    val newLimit = periodUsageSeconds + 300L
                     database.appLimitDao().updateLimit(it.copy(timeLimit = newLimit))
                 }
 
